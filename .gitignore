@@ -1,0 +1,6 @@
+.env
+node_modules/
+bun.lockb
+/node_modules/
+/logs/app.log
+test.ts
