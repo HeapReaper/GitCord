@@ -10,6 +10,7 @@ export default class Events {
 
   constructor(client: Client) {
     this.client = client;
+
     if (instance) return instance;
     instance = this;
   }

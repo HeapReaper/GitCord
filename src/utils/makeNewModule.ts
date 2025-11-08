@@ -22,18 +22,23 @@ export const commands = [
 ].map(commands => commands.toJSON());
 `;
 
-  const commandsListenerFileWrite = `import { Client, Interaction, Events, MessageFlags } from "discord.js";
+  const commandsListenerFileWrite = `import {
+  Client,
+  Interaction,
+  Events as DiscordEvents,
+  MessageFlags
+} from "discord.js";
+
+let instance: CommandsListener | null = null;
 
 export default class CommandsListener {
   private readonly client: Client;
 
   constructor(client: Client) {
     this.client = client;
-    void this.commandsListener();
-  }
-
-  async commandsListener(): Promise<void> {
-    //
+    
+    if (instance) return instance;
+    instance = this;
   }
 }
 `;
@@ -50,6 +55,7 @@ export default class Events {
 
   constructor(client: Client) {
     this.client = client;
+    
     if (instance) return instance;
     instance = this;
   }
@@ -58,11 +64,16 @@ export default class Events {
 
   const tasksFileWrite = `import { Client, TextChannel } from "discord.js";
 
+let instance: Tasks | null = null;
+
 export default class Tasks {
   private readonly client: Client;
 
   constructor(client: Client) {
     this.client = client;
+    
+    if (instance) return instance;
+    instance = this;
   }
 }
 `;
