@@ -81,6 +81,21 @@ export default class Events {
       embeds: [embed],
       components: [buttonsRow],
     });
+
+    // Create a discussion thread from the original message
+    try {
+      const thread = await reply.startThread({
+        name: `Discussion: ${message.author.username}'s Report`,
+        autoArchiveDuration: 1440, // 24 hours
+        reason: 'Thread for bug/feature discussion',
+      });
+      await thread.send({
+        content: `Hey <@${message.author.id}>, further discussion about this report can continue here. 💬`,
+      });
+      console.log(`Thread created: ${thread.name}`);
+    } catch (error) {
+      console.error("Failed to create thread:", error);
+    }
   }
 
   async handleInteraction(interaction: Interaction) {
