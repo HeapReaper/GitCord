@@ -122,7 +122,6 @@ export default class Events {
       }
 
       // Handle confirmation button
-
       const [confirmAction, confirmType, repo, botMessageId] = interaction.customId.split("_");
 
       if (confirmAction === "confirm") {
@@ -163,19 +162,19 @@ export default class Events {
             value: `[View on GitHub](${githubUrl})`,
           });
 
+        // Disable all buttons after confirming
         const updatedComponents = originalMessage.components.map(row =>
           // @ts-ignore
           ActionRowBuilder.from(row).setComponents(
             // @ts-ignore
             row.components.map(comp => {
-              if (comp.type === 2 && comp.customId?.startsWith(`create_${confirmType}`)) {
+              if (comp.type === 2) {
                 return ButtonBuilder.from(comp).setDisabled(true);
               }
               return comp;
             })
           )
         );
-
         await originalMessage.edit({
           embeds: [updatedEmbed],
           // @ts-ignore
