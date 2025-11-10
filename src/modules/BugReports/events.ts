@@ -38,7 +38,6 @@ export default class Events {
     });
   }
 
-  // Reusable function to build embed, reply, buttons, and thread
   private async buildBugFeatureWorkflow(message: Message) {
     const embed = new EmbedBuilder()
       .setTitle("📝 New Bug Report / Feature Request")
@@ -91,6 +90,7 @@ export default class Events {
   }
 
   async handleMessageCreate(message: Message | PartialMessage) {
+    // Fetch message if not in cache
     if (message.partial) {
       try {
         message = await message.fetch();
@@ -106,20 +106,18 @@ export default class Events {
   }
 
   async handleInteraction(interaction: Interaction) {
-    // Context menu command (Message)
     if (interaction.isMessageContextMenuCommand()) {
       const message = interaction.targetMessage;
       await this.buildBugFeatureWorkflow(message);
 
       // Acknowledge the context menu
       await interaction.reply({
-        content: `✅ Report workflow started for this message.`,
+        content: `Report workflow started for this message.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    // Button interaction
     if (interaction.isButton()) {
       const [action, type, botMessageIdButton] = interaction.customId.split("_");
 
@@ -131,11 +129,11 @@ export default class Events {
             AVAILABLE_REPOS.map(r => new StringSelectMenuOptionBuilder().setLabel(r.label).setValue(r.value))
           );
 
-        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
-
         await interaction.reply({
           content: `Please select a repository for your ${type} issue:`,
-          components: [row],
+          components: [
+            new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)
+          ],
           flags: MessageFlags.Ephemeral,
         });
 
