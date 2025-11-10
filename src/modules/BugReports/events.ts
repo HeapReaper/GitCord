@@ -179,7 +179,8 @@ export default class Events {
 
         // Update original embed
         const updatedEmbed = EmbedBuilder.from(embed)
-          .setColor(0x57f287)
+          .setTitle(confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request")
+          .setColor(DiscordColors.Green)
           .addFields({
             name: "✅ Linked GitHub Issue",
             value: `[View on GitHub](${githubUrl})`,
