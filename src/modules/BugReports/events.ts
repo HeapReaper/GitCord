@@ -15,6 +15,7 @@ import {
 } from "discord.js";
 import octokit from "@utils/GitHub.ts";
 import { AVAILABLE_REPOS } from "../../../repos.ts";
+import { DiscordColors } from "@src/enums/Color.ts";
 
 let instance: Events | null = null;
 
@@ -56,7 +57,7 @@ export default class Events {
         name: message.author?.displayName || "Unknown User",
         iconURL: message.author?.displayAvatarURL() || undefined,
       })
-      .setColor(0x5865f2)
+      .setColor(DiscordColors.Primary)
       .setTimestamp();
 
     const buttonsRow = new ActionRowBuilder<ButtonBuilder>();
