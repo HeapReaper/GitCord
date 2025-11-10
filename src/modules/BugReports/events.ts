@@ -120,7 +120,6 @@ export default class Events {
 
     if (interaction.isButton()) {
       const [action, type, botMessageIdButton] = interaction.customId.split("_");
-
       if (action === "create" && (type === "bug" || type === "feature")) {
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId(`repo_select_${type}_${botMessageIdButton}`)
@@ -144,7 +143,12 @@ export default class Events {
 
       if (confirmAction === "confirm") {
         // fetch the original message for issue content
-        const channel = await this.client.channels.fetch(process.env.BUG_REPORT_CHANNEL!);
+        const channelId =
+          confirmType === "bug"
+            ? process.env.BUG_REPORT_CHANNEL!
+            : process.env.FEEDBACK_CHANNEL!;
+
+        const channel = await this.client.channels.fetch(channelId);
         if (!channel?.isTextBased()) return;
 
         const originalMessage = await (channel as TextChannel).messages.fetch(botMessageId);
