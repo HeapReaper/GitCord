@@ -1,12 +1,18 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder, ApplicationCommandType } from "discord.js";
 
+// Slash commands
 export const commands = [
   new SlashCommandBuilder()
     .setName("connect")
     .setDescription("Connect to Github or GitLab")
-    .addSubcommand(add =>
-      add
+    .addSubcommand(sub =>
+      sub
         .setName("github")
-        .setDescription("Connect your GitHub account"),
-    )
-].map(commands => commands.toJSON());
+        .setDescription("Connect your GitHub account")
+    ),
+
+  {
+    name: "Report Bug/Feature",
+    type: ApplicationCommandType.Message,
+  },
+].map(cmd => cmd instanceof SlashCommandBuilder ? cmd.toJSON() : cmd);

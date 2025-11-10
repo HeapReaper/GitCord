@@ -38,23 +38,13 @@ export default class Events {
     });
   }
 
-  async handleMessageCreate(message: Message | PartialMessage) {
-    if (message.partial) {
-      try {
-        message = await message.fetch();
-      } catch (error) {
-        console.error("Failed to fetch partial message:", error);
-        return;
-      }
-    }
-
-    if (message.channel.id !== process.env.BUG_REPORT_CHANNEL && message.channel.id !== process.env.FEEDBACK_CHANNEL) return;
-
+  // Reusable function to build embed, reply, buttons, and thread
+  private async buildBugFeatureWorkflow(message: Message) {
     const embed = new EmbedBuilder()
       .setTitle("📝 New Bug Report / Feature Request")
       .setDescription(message.content || "*No content provided*")
       .setAuthor({
-        name: message.author?.displayName || "Unknown User",
+        name: message.author?.username || "Unknown User",
         iconURL: message.author?.displayAvatarURL() || undefined,
       })
       .setColor(DiscordColors.Primary)
@@ -83,23 +73,53 @@ export default class Events {
       components: [buttonsRow],
     });
 
-    // Create a discussion thread from the original message
+    // Create discussion thread
     try {
       const thread = await reply.startThread({
         name: `Discussion: ${message.author.username}'s Report`,
-        autoArchiveDuration: 1440, // 24 hours
-        reason: 'Thread for bug/feature discussion',
+        autoArchiveDuration: 1440,
+        reason: "Thread for bug/feature discussion",
       });
       await thread.send({
         content: `Hey <@${message.author.id}>, further discussion about this report can continue here. 💬`,
       });
-      console.log(`Thread created: ${thread.name}`);
     } catch (error) {
       console.error("Failed to create thread:", error);
     }
+
+    return reply;
+  }
+
+  async handleMessageCreate(message: Message | PartialMessage) {
+    if (message.partial) {
+      try {
+        message = await message.fetch();
+      } catch (error) {
+        console.error("Failed to fetch partial message:", error);
+        return;
+      }
+    }
+
+    if (message.channel.id !== process.env.BUG_REPORT_CHANNEL && message.channel.id !== process.env.FEEDBACK_CHANNEL) return;
+
+    await this.buildBugFeatureWorkflow(message);
   }
 
   async handleInteraction(interaction: Interaction) {
+    // Context menu command (Message)
+    if (interaction.isMessageContextMenuCommand()) {
+      const message = interaction.targetMessage;
+      await this.buildBugFeatureWorkflow(message);
+
+      // Acknowledge the context menu
+      await interaction.reply({
+        content: `✅ Report workflow started for this message.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Button interaction
     if (interaction.isButton()) {
       const [action, type, botMessageIdButton] = interaction.customId.split("_");
 
@@ -122,7 +142,6 @@ export default class Events {
         return;
       }
 
-      // Handle confirmation button
       const [confirmAction, confirmType, repo, botMessageId] = interaction.customId.split("_");
 
       if (confirmAction === "confirm") {
@@ -164,7 +183,6 @@ export default class Events {
             value: `[View on GitHub](${githubUrl})`,
           });
 
-        // Disable all buttons after confirming
         const updatedComponents = originalMessage.components.map(row =>
           // @ts-ignore
           ActionRowBuilder.from(row).setComponents(
@@ -177,6 +195,7 @@ export default class Events {
             })
           )
         );
+
         await originalMessage.edit({
           embeds: [updatedEmbed],
           // @ts-ignore
@@ -185,7 +204,7 @@ export default class Events {
       }
     }
 
-    // Handle select menu choices
+    // Select menu interaction
     if (interaction.isStringSelectMenu()) {
       const [prefix, action, type, botMessageId] = interaction.customId.split("_");
       if (prefix === "repo" && action === "select" && (type === "bug" || type === "feature")) {
@@ -206,6 +225,5 @@ export default class Events {
         return;
       }
     }
-
   }
 }
