@@ -145,6 +145,7 @@ export default class Events {
           repo,
           title,
           body,
+          labels: [confirmType === "bug" ? "bug" : "enhancement"],
         });
 
         const githubUrl = issue.data.html_url;
