@@ -10,7 +10,7 @@ async function loadModules(client: any) {
   const apiModules: ((app: any, client: any) => void)[] = [];
 
   try {
-    modulesPath = path.join(process.env.MODULES_BASE_PATH as string ?? "", "modules");
+    modulesPath = path.join(process.env.MODULES_BASE_PATH as string ?? "", "src/modules");
     moduleFolders = await fs.readdir(modulesPath);
   } catch (error) {
     Logging.error(`Error loading modules in moduleLoader: ${error}`);
