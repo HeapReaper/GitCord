@@ -114,7 +114,7 @@ export default class Events {
       // Acknowledge the context menu
       await interaction.reply({
         content: `✅ Report workflow started for this message.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
