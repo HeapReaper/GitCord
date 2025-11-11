@@ -90,7 +90,6 @@ export default class Events {
   }
 
   async handleMessageCreate(message: Message | PartialMessage) {
-    // Fetch message if not in cache
     if (message.partial) {
       try {
         message = await message.fetch();
@@ -100,7 +99,11 @@ export default class Events {
       }
     }
 
-    if (message.channel.id !== process.env.BUG_REPORT_CHANNEL && message.channel.id !== process.env.FEEDBACK_CHANNEL) return;
+    if (
+      message.channel.id !== process.env.BUG_REPORT_CHANNEL &&
+      message.channel.id !== process.env.FEEDBACK_CHANNEL
+    )
+      return;
 
     await this.buildBugFeatureWorkflow(message);
   }
@@ -108,45 +111,86 @@ export default class Events {
   async handleInteraction(interaction: Interaction) {
     if (interaction.isMessageContextMenuCommand()) {
       const message = interaction.targetMessage;
-      await this.buildBugFeatureWorkflow(message);
 
-      // Acknowledge the context menu
-      await interaction.reply({
-        content: `Report workflow started for this message.`,
-        flags: MessageFlags.Ephemeral,
-      });
+      let issueId: number | null = null;
+
+      // Check if the message is in a thread with an issue ID
+      if (message.channel.isThread()) {
+        const thread = message.channel;
+        const match = thread.name.match(/#(\d+)/);
+        if (match) issueId = parseInt(match[1]);
+      }
+
+      if (issueId) {
+        const confirmCommentButton = new ButtonBuilder()
+          .setCustomId(`comment_existing_${issueId}_${message.id}`)
+          .setLabel("💬 Add Comment to Issue")
+          .setStyle(ButtonStyle.Primary);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirmCommentButton);
+
+        await interaction.reply({
+          content: `This thread is already linked to GitHub Issue #${issueId}.`,
+          components: [row],
+          flags: MessageFlags.Ephemeral,
+        });
+      } else {
+        const repo = "HeapReaper";
+        const issues = await octokit.issues.listForRepo({
+          owner: "HeapReaper",
+          repo,
+          per_page: 20,
+          state: "open",
+        });
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId(`select_existing_${message.id}`)
+          .setPlaceholder("Select an existing GitHub issue")
+          .addOptions(
+            issues.data.map((i) =>
+              new StringSelectMenuOptionBuilder()
+                .setLabel(`#${i.number} ${i.title}`)
+                .setValue(i.number.toString())
+            )
+          );
+
+        await interaction.reply({
+          content: `Select a GitHub issue to link this report:`,
+          components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
       return;
     }
 
+    // ---------------- BUTTON INTERACTIONS ----------------
     if (interaction.isButton()) {
       const [action, type, botMessageIdButton] = interaction.customId.split("_");
+
+      // CREATE NEW ISSUE
       if (action === "create" && (type === "bug" || type === "feature")) {
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId(`repo_select_${type}_${botMessageIdButton}`)
           .setPlaceholder("Select a repository")
-          .addOptions(
-            AVAILABLE_REPOS.map(r => new StringSelectMenuOptionBuilder().setLabel(r.label).setValue(r.value))
-          );
+          .addOptions(AVAILABLE_REPOS.map((r) =>
+            new StringSelectMenuOptionBuilder().setLabel(r.label).setValue(r.value)
+          ));
 
         await interaction.reply({
           content: `Please select a repository for your ${type} issue:`,
-          components: [
-            new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)
-          ],
+          components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu)],
           flags: MessageFlags.Ephemeral,
         });
-
         return;
       }
 
+      // CONFIRM NEW ISSUE CREATION
       const [confirmAction, confirmType, repo, botMessageId] = interaction.customId.split("_");
 
       if (confirmAction === "confirm") {
-        // fetch the original message for issue content
         const channelId =
-          confirmType === "bug"
-            ? process.env.BUG_REPORT_CHANNEL!
-            : process.env.FEEDBACK_CHANNEL!;
+          confirmType === "bug" ? process.env.BUG_REPORT_CHANNEL! : process.env.FEEDBACK_CHANNEL!;
 
         const channel = await this.client.channels.fetch(channelId);
         if (!channel?.isTextBased()) return;
@@ -161,7 +205,6 @@ export default class Events {
         const title = `${confirmType === "bug" ? "Bug" : "Feature"}: ${words}`;
         const body = `**Reported by:** ${authorName}\n\n${messageContent}\n\n---\n[View original report on Discord](${originalMessage.url})`;
 
-        // create GitHub issue
         const issue = await octokit.issues.create({
           owner: "HeapReaper",
           repo,
@@ -171,29 +214,31 @@ export default class Events {
         });
 
         const githubUrl = issue.data.html_url;
+        const issueId = issue.data.number;
 
-        await interaction.update({
-          content: `✅ ${confirmType === "bug" ? "Bug" : "Feature"} issue created successfully for **${repo}**!\n[🔗 View on GitHub](${githubUrl})`,
-          components: [],
-        });
+        if (originalMessage.hasThread) {
+          try {
+            const thread = await originalMessage.thread?.fetch();
+            if (thread) await thread.setName(`${thread.name} | Issue #${issueId}`);
+          } catch (err) {
+            console.error("Failed to update thread name:", err);
+          }
+        }
 
-        // Update original embed
         const updatedEmbed = EmbedBuilder.from(embed)
-          .setTitle(confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request")
+          .setTitle(`${confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request"} | Issue #${issueId}`)
           .setColor(DiscordColors.Green)
           .addFields({
             name: "✅ Linked GitHub Issue",
             value: `[View on GitHub](${githubUrl})`,
           });
 
-        const updatedComponents = originalMessage.components.map(row =>
+        const updatedComponents = originalMessage.components.map((row) =>
           // @ts-ignore
           ActionRowBuilder.from(row).setComponents(
             // @ts-ignore
-            row.components.map(comp => {
-              if (comp.type === 2) {
-                return ButtonBuilder.from(comp).setDisabled(true);
-              }
+            row.components.map((comp) => {
+              if (comp.type === 2) return ButtonBuilder.from(comp).setDisabled(true);
               return comp;
             })
           )
@@ -204,12 +249,49 @@ export default class Events {
           // @ts-ignore
           components: updatedComponents,
         });
+
+        await interaction.update({
+          content: `✅ ${confirmType === "bug" ? "Bug" : "Feature"} issue created successfully for **${repo}**!\n[🔗 View on GitHub](${githubUrl})`,
+          components: [],
+        });
+      }
+
+      // ADD COMMENT TO EXISTING ISSUE
+      if (interaction.customId.startsWith("comment_existing_")) {
+        const [, issueIdStr, messageId] = interaction.customId.split("_");
+        const issueId = parseInt(issueIdStr);
+
+        let fetchChannel = interaction.channel;
+        if (!fetchChannel?.isTextBased()) return;
+
+        // Use parent channel if in a thread
+        if (fetchChannel.isThread() && fetchChannel.parent) {
+          // @ts-ignore
+          fetchChannel = await fetchChannel.parent.fetch();
+        }
+
+        // @ts-ignore
+        const originalMessage = await fetchChannel.messages.fetch(interaction.message.id);
+        const content = originalMessage.content || originalMessage.embeds[0]?.description || "No content";
+
+        await octokit.issues.createComment({
+          owner: "HeapReaper",
+          repo: "HeapReaper",
+          issue_number: issueId,
+          body: `**Comment from Discord**:\n${content}`,
+        });
+
+        await interaction.update({
+          content: `💬 Comment added to GitHub Issue #${issueId}`,
+          components: [],
+        });
       }
     }
 
-    // Select menu interaction
     if (interaction.isStringSelectMenu()) {
       const [prefix, action, type, botMessageId] = interaction.customId.split("_");
+
+      // Repo select for new issue
       if (prefix === "repo" && action === "select" && (type === "bug" || type === "feature")) {
         const selectedRepo = interaction.values[0];
 
@@ -222,6 +304,25 @@ export default class Events {
 
         await interaction.update({
           content: `You selected **${selectedRepo}**. Confirm to create the ${type} issue.`,
+          components: [row],
+        });
+
+        return;
+      }
+
+      // Existing issue selection
+      if (prefix === "select" && action === "existing") {
+        const selectedIssueId = parseInt(interaction.values[0]);
+
+        const commentButton = new ButtonBuilder()
+          .setCustomId(`comment_existing_${selectedIssueId}_${botMessageId}`)
+          .setLabel("💬 Add Comment to Issue")
+          .setStyle(ButtonStyle.Primary);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(commentButton);
+
+        await interaction.update({
+          content: `You selected GitHub Issue #${selectedIssueId}. Confirm to add a comment.`,
           components: [row],
         });
 
