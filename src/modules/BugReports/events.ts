@@ -164,11 +164,11 @@ export default class Events {
       return;
     }
 
-    // ---------------- BUTTON INTERACTIONS ----------------
+    // Button interactions
     if (interaction.isButton()) {
       const [action, type, botMessageIdButton] = interaction.customId.split("_");
 
-      // CREATE NEW ISSUE
+      // Create new issue
       if (action === "create" && (type === "bug" || type === "feature")) {
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId(`repo_select_${type}_${botMessageIdButton}`)
@@ -185,7 +185,7 @@ export default class Events {
         return;
       }
 
-      // CONFIRM NEW ISSUE CREATION
+      // Confirm new issue creation
       const [confirmAction, confirmType, repo, botMessageId] = interaction.customId.split("_");
 
       if (confirmAction === "confirm") {
@@ -229,7 +229,7 @@ export default class Events {
           .setTitle(`${confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request"} | Issue #${issueId}`)
           .setColor(DiscordColors.Green)
           .addFields({
-            name: "✅ Linked GitHub Issue",
+            name: "Linked GitHub Issue",
             value: `[View on GitHub](${githubUrl})`,
           });
 
@@ -256,7 +256,7 @@ export default class Events {
         });
       }
 
-      // ADD COMMENT TO EXISTING ISSUE
+      // Add comment ot existing issue
       if (interaction.customId.startsWith("comment_existing_")) {
         const [, issueIdStr, messageId] = interaction.customId.split("_");
         const issueId = parseInt(issueIdStr);
