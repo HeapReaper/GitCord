@@ -177,9 +177,9 @@ export default class Events {
 
       if (confirmAction === "confirm") {
         try {
+          // Fetch the original channel and message
           const channelId =
             confirmType === "bug" ? process.env.BUG_REPORT_CHANNEL! : process.env.FEEDBACK_CHANNEL!;
-
           const channel = await this.client.channels.fetch(channelId);
           if (!channel?.isTextBased()) return;
 
@@ -187,25 +187,49 @@ export default class Events {
           if (!originalMessage?.embeds?.[0]) return;
 
           const embed = originalMessage.embeds[0];
+
+          // Check if a GitHub issue is already linked
+          const linkedField = embed.fields?.find(f => f.name === "Linked GitHub Issue");
+          if (linkedField) {
+            // Already linked, just respond ephemerally
+            await interaction.reply({
+              content: "⚠️ This message is already linked to a GitHub issue.",
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+
+          // Defer the interaction immediately to prevent 3s timeout
+          await interaction.deferUpdate();
+
           const messageContent = embed.description ?? "No description provided";
           const authorName = embed.author?.name ?? "Unknown User";
           const words = messageContent.split(/\s+/).slice(0, 10).join(" ");
           const title = `${confirmType === "bug" ? "Bug" : "Feature"}: ${words}`;
           const body = `**Reported by:** ${authorName}\n\n${messageContent}\n\n---\n[View original report on Discord](${originalMessage.url})`;
 
-          const embedAuthorName = embed.author?.name ?? "Unknown User";
+          // Attempt to find original author's ID
           let authorId = "unknown";
-
-          // Try to get original author ID
           if (interaction.guild) {
             const members = await interaction.guild.members.fetch();
-            const matchedMember = members.find(m => m.user.username === embedAuthorName);
-
-            if (matchedMember) {
-              authorId = matchedMember.user.id;
-            }
+            const matchedMember = members.find(m => m.user.username === authorName);
+            if (matchedMember) authorId = matchedMember.user.id;
           }
 
+          // Disable the "Confirm Issue Creation" button immediately
+          const disabledComponents = originalMessage.components.map((row) =>
+            // @ts-ignore
+            ActionRowBuilder.from(row).setComponents(
+              // @ts-ignore
+              row.components.map((comp) =>
+                comp.customId === interaction.customId ? ButtonBuilder.from(comp).setDisabled(true) : comp
+              )
+            )
+          );
+          // @ts-ignore
+          await originalMessage.edit({ components: disabledComponents });
+
+          // Create GitHub issue
           const issue = await octokit.issues.create({
             owner: "HeapReaper",
             repo,
@@ -214,18 +238,10 @@ export default class Events {
             labels: [confirmType === "bug" ? "bug" : "enhancement"],
           });
 
-          const githubUrl = issue.data.html_url;
           const issueId = issue.data.number;
+          const githubUrl = issue.data.html_url;
 
-          if (originalMessage.hasThread) {
-            try {
-              const thread = await originalMessage.thread?.fetch();
-              if (thread) await thread.setName(`${thread.name} | Issue #${issueId}`);
-            } catch (err) {
-              console.error("Failed to update thread name:", err);
-            }
-          }
-
+          // Update embed to show linked GitHub issue
           const updatedEmbed = EmbedBuilder.from(embed)
             .setTitle(`${confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request"} | Issue #${issueId}`)
             .setColor(DiscordColors.Green)
@@ -234,24 +250,9 @@ export default class Events {
               value: `[View on GitHub](${githubUrl})`,
             });
 
-          const updatedComponents = originalMessage.components.map((row) =>
-            // @ts-ignore
-            ActionRowBuilder.from(row).setComponents(
-              // @ts-ignore
-              row.components.map((comp) => {
-                if (comp.type === 2) return ButtonBuilder.from(comp).setDisabled(true);
-                return comp;
-              })
-            )
-          );
+          await originalMessage.edit({ embeds: [updatedEmbed] });
 
-          await originalMessage.edit({
-            embeds: [updatedEmbed],
-            // @ts-ignore
-            components: updatedComponents,
-          });
-
-          // Create thread after confirming
+          // Start a thread for discussion
           const thread = await originalMessage.startThread({
             name: `${authorName}'s ${confirmType === "bug" ? "Bug" : "Feature"} | Issue #${issueId}`,
             autoArchiveDuration: 1440,
@@ -262,42 +263,48 @@ export default class Events {
             content: `Your report is now linked to [GitHub Issue #${issueId}](${githubUrl}). 💬 Continue discussion here.`,
           });
 
-          // Save ticket to DB
-          try {
-            const embed = originalMessage.embeds[0];
-
-            await prisma.discordMessage.create({
-              data: {
-                id: originalMessage.id,
-                channelId: originalMessage.channelId,
-                authorId,
-                content: embed?.description ?? originalMessage.content ?? "No content",
-                workflowType: confirmType.toUpperCase() === "BUG" ? "BUG" : "FEATURE",
-                githubIssue: {
-                  create: {
-                    owner: "HeapReaper",
-                    repo: repo,
-                    issueNumber: issueId,
-                    title: title,
-                    url: githubUrl,
-                    labels: [confirmType === "bug" ? "bug" : "enhancement"],
-                  },
-                },
-                thread: {
-                  create: {
-                    id: thread.id,
-                    name: thread.name,
-                  },
+          // Save ticket to database
+          await prisma.discordMessage.create({
+            data: {
+              id: originalMessage.id,
+              channelId: originalMessage.channelId,
+              authorId,
+              content: embed.description ?? originalMessage.content ?? "No content",
+              workflowType: confirmType.toUpperCase() === "BUG" ? "BUG" : "FEATURE",
+              githubIssue: {
+                create: {
+                  owner: "HeapReaper",
+                  repo,
+                  issueNumber: issueId,
+                  title,
+                  url: githubUrl,
+                  labels: [confirmType === "bug" ? "bug" : "enhancement"],
                 },
               },
-            });
+              thread: {
+                create: {
+                  id: thread.id,
+                  name: thread.name,
+                },
+              },
+            },
+          });
 
-            console.log("Ticket saved to database successfully!");
-          } catch (err) {
-            console.error("Failed to save ticket to database:", err);
-          }
+          //  Optional ephemeral confirmation message to the user
+          await interaction.followUp({
+            content: `✅ Issue #${issueId} created successfully in repository **${repo}**!`,
+            ephemeral: true,
+          });
+
+          console.log("Ticket saved and interaction completed successfully!");
         } catch (error) {
-          console.error("Failed to confirm action: ", error);
+          console.error("Failed to confirm action:", error);
+          try {
+            await interaction.followUp({
+              content: "❌ Failed to create GitHub issue. Please try again later.",
+              ephemeral: true,
+            });
+          } catch {}
         }
       }
 
