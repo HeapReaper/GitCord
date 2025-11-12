@@ -13,7 +13,7 @@ COPY . .
 
 RUN bun install
 
-RUN npx prisma generate
+RUN bunx prisma generate
 
 WORKDIR /app/src
 
