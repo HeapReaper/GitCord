@@ -13,6 +13,8 @@ COPY . .
 
 RUN bun install
 
+RUN npx prisma generate
+
 WORKDIR /app/src
 
 EXPOSE 3144
