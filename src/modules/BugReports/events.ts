@@ -189,71 +189,80 @@ export default class Events {
       const [confirmAction, confirmType, repo, botMessageId] = interaction.customId.split("_");
 
       if (confirmAction === "confirm") {
-        const channelId =
-          confirmType === "bug" ? process.env.BUG_REPORT_CHANNEL! : process.env.FEEDBACK_CHANNEL!;
+        try {
+          const channelId =
+            confirmType === "bug" ? process.env.BUG_REPORT_CHANNEL! : process.env.FEEDBACK_CHANNEL!;
 
-        const channel = await this.client.channels.fetch(channelId);
-        if (!channel?.isTextBased()) return;
+          const channel = await this.client.channels.fetch(channelId);
+          if (!channel?.isTextBased()) return;
 
-        const originalMessage = await (channel as TextChannel).messages.fetch(botMessageId);
-        if (!originalMessage?.embeds?.[0]) return;
+          const originalMessage = await (channel as TextChannel).messages.fetch(botMessageId);
+          if (!originalMessage?.embeds?.[0]) return;
 
-        const embed = originalMessage.embeds[0];
-        const messageContent = embed.description ?? "No description provided";
-        const authorName = embed.author?.name ?? "Unknown User";
-        const words = messageContent.split(/\s+/).slice(0, 10).join(" ");
-        const title = `${confirmType === "bug" ? "Bug" : "Feature"}: ${words}`;
-        const body = `**Reported by:** ${authorName}\n\n${messageContent}\n\n---\n[View original report on Discord](${originalMessage.url})`;
+          const embed = originalMessage.embeds[0];
+          const messageContent = embed.description ?? "No description provided";
+          const authorName = embed.author?.name ?? "Unknown User";
+          const words = messageContent.split(/\s+/).slice(0, 10).join(" ");
+          const title = `${confirmType === "bug" ? "Bug" : "Feature"}: ${words}`;
+          const body = `**Reported by:** ${authorName}\n\n${messageContent}\n\n---\n[View original report on Discord](${originalMessage.url})`;
 
-        const issue = await octokit.issues.create({
-          owner: "HeapReaper",
-          repo,
-          title,
-          body,
-          labels: [confirmType === "bug" ? "bug" : "enhancement"],
-        });
-
-        const githubUrl = issue.data.html_url;
-        const issueId = issue.data.number;
-
-        if (originalMessage.hasThread) {
-          try {
-            const thread = await originalMessage.thread?.fetch();
-            if (thread) await thread.setName(`${thread.name} | Issue #${issueId}`);
-          } catch (err) {
-            console.error("Failed to update thread name:", err);
-          }
-        }
-
-        const updatedEmbed = EmbedBuilder.from(embed)
-          .setTitle(`${confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request"} | Issue #${issueId}`)
-          .setColor(DiscordColors.Green)
-          .addFields({
-            name: "Linked GitHub Issue",
-            value: `[View on GitHub](${githubUrl})`,
+          const issue = await octokit.issues.create({
+            owner: "HeapReaper",
+            repo,
+            title,
+            body,
+            labels: [confirmType === "bug" ? "bug" : "enhancement"],
           });
 
-        const updatedComponents = originalMessage.components.map((row) =>
-          // @ts-ignore
-          ActionRowBuilder.from(row).setComponents(
+          const githubUrl = issue.data.html_url;
+          const issueId = issue.data.number;
+
+          if (originalMessage.hasThread) {
+            try {
+              const thread = await originalMessage.thread?.fetch();
+              if (thread) await thread.setName(`${thread.name} | Issue #${issueId}`);
+            } catch (err) {
+              console.error("Failed to update thread name:", err);
+            }
+          }
+
+          const updatedEmbed = EmbedBuilder.from(embed)
+            .setTitle(`${confirmType === "bug" ? "🐞 Bug Report" : "✨ Feature Request"} | Issue #${issueId}`)
+            .setColor(DiscordColors.Green)
+            .addFields({
+              name: "Linked GitHub Issue",
+              value: `[View on GitHub](${githubUrl})`,
+            });
+
+          const updatedComponents = originalMessage.components.map((row) =>
             // @ts-ignore
-            row.components.map((comp) => {
-              if (comp.type === 2) return ButtonBuilder.from(comp).setDisabled(true);
-              return comp;
-            })
-          )
-        );
+            ActionRowBuilder.from(row).setComponents(
+              // @ts-ignore
+              row.components.map((comp) => {
+                if (comp.type === 2) return ButtonBuilder.from(comp).setDisabled(true);
+                return comp;
+              })
+            )
+          );
 
-        await originalMessage.edit({
-          embeds: [updatedEmbed],
-          // @ts-ignore
-          components: updatedComponents,
-        });
+          await originalMessage.edit({
+            embeds: [updatedEmbed],
+            // @ts-ignore
+            components: updatedComponents,
+          });
 
-        await interaction.update({
-          content: `✅ ${confirmType === "bug" ? "Bug" : "Feature"} issue created successfully for **${repo}**!\n[🔗 View on GitHub](${githubUrl})`,
-          components: [],
-        });
+          await interaction.update({
+            content: `✅ ${confirmType === "bug" ? "Bug" : "Feature"} issue created successfully for **${repo}**!\n[🔗 View on GitHub](${githubUrl})`,
+            components: [],
+          });
+        } catch (error) {
+          console.error("Failed to confirm action: ", error);
+          await interaction.reply({
+            content: "Oops",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
       }
 
       // Add comment ot existing issue
