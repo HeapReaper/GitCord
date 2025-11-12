@@ -1,6 +1,8 @@
 export const AVAILABLE_REPOS = [
   { label: "KlikCV", value: "KlikCV" },
-  { label: "Orbit Dashboard", value: "Orbit" },
+  { label: "GitCord", value: "GitCord" },
+  { label: "Orbit Website", value: "Orbit" },
   { label: "Orbit Bot", value: "Orbit-bot " },
-  { label: "GitCord test repo", value: "GitCord-test-repo" },
+  { label: "Test repo", value: "GitCord-test-repo" },
+  { label: "GitCord", value: "GitCord" },
 ];
