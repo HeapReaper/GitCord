@@ -16,6 +16,7 @@ import {
 import octokit from "@utils/GitHub.ts";
 import { AVAILABLE_REPOS } from "../../../repos.ts";
 import { DiscordColors } from "@src/enums/Color.ts";
+import { prisma } from "@utils//prisma.ts"
 
 let instance: Events | null = null;
 
@@ -192,6 +193,19 @@ export default class Events {
           const title = `${confirmType === "bug" ? "Bug" : "Feature"}: ${words}`;
           const body = `**Reported by:** ${authorName}\n\n${messageContent}\n\n---\n[View original report on Discord](${originalMessage.url})`;
 
+          const embedAuthorName = embed.author?.name ?? "Unknown User";
+          let authorId = "unknown";
+
+          // Try to get original author ID
+          if (interaction.guild) {
+            const members = await interaction.guild.members.fetch();
+            const matchedMember = members.find(m => m.user.username === embedAuthorName);
+
+            if (matchedMember) {
+              authorId = matchedMember.user.id;
+            }
+          }
+
           const issue = await octokit.issues.create({
             owner: "HeapReaper",
             repo,
@@ -243,21 +257,51 @@ export default class Events {
             autoArchiveDuration: 1440,
             reason: "Thread for bug/feature discussion",
           });
+
           await thread.send({
             content: `Your report is now linked to [GitHub Issue #${issueId}](${githubUrl}). 💬 Continue discussion here.`,
           });
 
+          // Save ticket to DB
+          try {
+            const embed = originalMessage.embeds[0];
+
+            await prisma.discordMessage.create({
+              data: {
+                id: originalMessage.id,
+                channelId: originalMessage.channelId,
+                authorId,
+                content: embed?.description ?? originalMessage.content ?? "No content",
+                workflowType: confirmType.toUpperCase() === "BUG" ? "BUG" : "FEATURE",
+                githubIssue: {
+                  create: {
+                    owner: "HeapReaper",
+                    repo: repo,
+                    issueNumber: issueId,
+                    title: title,
+                    url: githubUrl,
+                    labels: [confirmType === "bug" ? "bug" : "enhancement"],
+                  },
+                },
+                thread: {
+                  create: {
+                    id: thread.id,
+                    name: thread.name,
+                  },
+                },
+              },
+            });
+
+            console.log("Ticket saved to database successfully!");
+          } catch (err) {
+            console.error("Failed to save ticket to database:", err);
+          }
         } catch (error) {
           console.error("Failed to confirm action: ", error);
-          await interaction.reply({
-            content: "Oops",
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
         }
       }
 
-      // Add comment ot existing issue
+      // Add comment or existing issue
       if (interaction.customId.startsWith("comment_existing_")) {
         const [, issueIdStr, messageId] = interaction.customId.split("_");
         const issueId = parseInt(issueIdStr);
