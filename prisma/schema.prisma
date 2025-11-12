@@ -12,3 +12,44 @@ model Test {
   name  String
   email String @unique
 }
+
+model DiscordMessage {
+  id            String       @id
+  channelId     String
+  authorId      String
+  content       String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workflowType  WorkflowType
+  githubIssue   GitHubIssue? @relation(fields: [githubIssueId], references: [id])
+  githubIssueId Int?
+
+  thread   Thread? @relation(fields: [threadId], references: [id])
+  threadId String? @unique
+}
+
+model GitHubIssue {
+  id              Int              @id @default(autoincrement())
+  owner           String
+  repo            String
+  issueNumber     Int
+  title           String
+  url             String
+  labels          String[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  discordMessages DiscordMessage[]
+  closed          Boolean          @default(false)
+}
+
+model Thread {
+  id             String          @id
+  name           String
+  createdAt      DateTime        @default(now())
+  discordMessage DiscordMessage?
+}
+
+enum WorkflowType {
+  BUG
+  FEATURE
+}
