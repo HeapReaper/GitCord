@@ -72,20 +72,6 @@ export default class Events {
       components: [buttonsRow],
     });
 
-    // Create discussion thread
-    try {
-      const thread = await reply.startThread({
-        name: `Discussion: ${message.author.username}'s Report`,
-        autoArchiveDuration: 1440,
-        reason: "Thread for bug/feature discussion",
-      });
-      await thread.send({
-        content: `Hey <@${message.author.id}>, further discussion about this report can continue here. 💬`,
-      });
-    } catch (error) {
-      console.error("Failed to create thread:", error);
-    }
-
     return reply;
   }
 
@@ -251,10 +237,16 @@ export default class Events {
             components: updatedComponents,
           });
 
-          await interaction.update({
-            content: `✅ ${confirmType === "bug" ? "Bug" : "Feature"} issue created successfully for **${repo}**!\n[🔗 View on GitHub](${githubUrl})`,
-            components: [],
+          // Create thread after confirming
+          const thread = await originalMessage.startThread({
+            name: `${authorName}'s ${confirmType === "bug" ? "Bug" : "Feature"} | Issue #${issueId}`,
+            autoArchiveDuration: 1440,
+            reason: "Thread for bug/feature discussion",
           });
+          await thread.send({
+            content: `Your report is now linked to [GitHub Issue #${issueId}](${githubUrl}). 💬 Continue discussion here.`,
+          });
+
         } catch (error) {
           console.error("Failed to confirm action: ", error);
           await interaction.reply({

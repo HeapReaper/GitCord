@@ -4,5 +4,4 @@ export const AVAILABLE_REPOS = [
   { label: "Orbit Website", value: "Orbit" },
   { label: "Orbit Bot", value: "Orbit-bot " },
   { label: "Test repo", value: "GitCord-test-repo" },
-  { label: "GitCord", value: "GitCord" },
 ];
