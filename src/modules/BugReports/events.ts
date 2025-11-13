@@ -65,7 +65,11 @@ export default class Events {
       new ButtonBuilder()
         .setCustomId(`create_feature_${reply.id}`)
         .setLabel("✨ Create Feature Issue")
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`close_report_${reply.id}`)
+        .setLabel("🔒 Close Report")
+        .setStyle(ButtonStyle.Secondary)
     );
 
     await reply.edit({
@@ -97,6 +101,96 @@ export default class Events {
 
   async handleInteraction(interaction: Interaction) {
     try {
+      if (interaction.isButton()) {
+        if (interaction.customId.startsWith("close_report_")) {
+          try {
+            const messageId = interaction.customId.split("_")[2];
+            const channel = interaction.channel as TextChannel;
+            if (!channel || !channel.isTextBased()) return;
+
+            const originalMessage = await channel.messages.fetch(messageId);
+            if (!originalMessage) return;
+
+            const embed = originalMessage.embeds?.[0];
+            if (!embed) return;
+
+            // Fetch DB record to check for linked GitHub issue
+            const ticket = await prisma.discordMessage.findUnique({
+              where: { id: messageId },
+              include: { githubIssue: true, thread: true },
+            });
+
+            // Close linked GitHub issue (if it exists)
+            if (ticket?.githubIssue) {
+              try {
+                await octokit.issues.update({
+                  owner: ticket.githubIssue.owner,
+                  repo: ticket.githubIssue.repo,
+                  issue_number: ticket.githubIssue.issueNumber,
+                  state: "closed",
+                });
+                console.log(`GitHub issue #${ticket.githubIssue.issueNumber} closed successfully.`);
+              } catch (ghError) {
+                console.error("Failed to close GitHub issue:", ghError);
+              }
+            }
+
+            // Archive linked thread if exists
+            if (ticket?.thread?.id) {
+              try {
+                const thread = await this.client.channels.fetch(ticket.thread.id);
+                if (thread?.isThread()) {
+                  await thread.setArchived(true, "Report closed by user");
+                }
+              } catch (thError) {
+                console.error("Failed to close related thread:", thError);
+              }
+            } else {
+              // fallback: find a matching thread by message ID
+              const threads = await channel.threads.fetchActive();
+              const relatedThread = threads.threads.find((t) =>
+                t.name.includes(originalMessage.id) || t.name.includes(embed.title ?? "")
+              );
+              if (relatedThread) {
+                await relatedThread.setArchived(true, "Report closed by user");
+              }
+            }
+
+            // Update embed to mark closed
+            const updatedEmbed = EmbedBuilder.from(embed)
+              .setTitle(`${embed.title?.replace(/\(Closed\)/i, "").trim()} (Closed)`)
+              .setColor(DiscordColors.Green ?? 0x808080);
+
+            // Disable all buttons
+            const disabledComponents = originalMessage.components.map((row) =>
+              // @ts-ignore
+              ActionRowBuilder.from(row).setComponents(
+                // @ts-ignore
+                row.components.map((comp) => ButtonBuilder.from(comp).setDisabled(true))
+              )
+            );
+
+            // @ts-ignore
+            await originalMessage.edit({ embeds: [updatedEmbed], components: disabledComponents });
+
+            await interaction.reply({
+              content: "✅ Report and linked GitHub issue have been closed.",
+              flags: MessageFlags.Ephemeral,
+            });
+          } catch (error) {
+            console.error("Failed to close report:", error);
+            await interaction.reply({
+              content: "❌ Failed to close the report. Please try again later.",
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+
+          return;
+        }
+
+      }
+      // Handle "Close Report" button
+
       if (interaction.isMessageContextMenuCommand()) {
         const message = interaction.targetMessage;
 
