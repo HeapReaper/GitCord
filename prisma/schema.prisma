@@ -40,6 +40,7 @@ model GitHubIssue {
   updatedAt       DateTime         @updatedAt
   discordMessages DiscordMessage[]
   closed          Boolean          @default(false)
+  GitHubCommit    GitHubCommit[]
 }
 
 model Thread {
@@ -52,4 +53,14 @@ model Thread {
 enum WorkflowType {
   BUG
   FEATURE
+}
+
+model GitHubCommit {
+  id        String      @id
+  issueId   Int
+  commitSha String
+  message   String
+  url       String
+  createdAt DateTime    @default(now())
+  issue     GitHubIssue @relation(fields: [issueId], references: [id])
 }
