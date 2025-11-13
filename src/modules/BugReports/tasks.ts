@@ -1,6 +1,7 @@
-import { Client, TextChannel } from "discord.js";
+import {Client, TextChannel, ThreadChannel} from "discord.js";
 import { prisma } from "@utils/prisma.ts";
 import octokit from "@utils/GitHub.ts";
+import {Thread} from "@prisma/client";
 
 let instance: Tasks | null = null;
 
@@ -68,12 +69,21 @@ export default class Tasks {
           for (const msg of issue.discordMessages) {
             if (!msg.threadId) continue;
 
-            const thread = await this.client.channels.fetch(msg.threadId);
+            const thread = await this.client.channels.fetch(msg.threadId) as ThreadChannel;
             if (!thread?.isTextBased()) continue;
 
-            await (thread as TextChannel).send({
+            await thread.send({
               content: `🛑 GitHub Issue #${issue.issueNumber} has been closed by @${data.closed_by?.login ?? "unknown"}. <@${msg.authorId}>${commitText}`,
             });
+
+            // Close thread
+            if (!thread.locked && !thread.archived) {
+              try {
+                await thread.setArchived(true, "GitHub issue closed");
+              } catch (err) {
+                console.error(`Failed to close thread ${thread.id}:`, err);
+              }
+            }
           }
         }
       }
